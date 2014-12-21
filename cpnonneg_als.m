@@ -1,4 +1,4 @@
-function U = cpnonneg_als(X,R,constrain_dim,update_order,quiet)
+function [U lambda]= cpnonneg_als(X,R,constrain_dim,update_order,quiet,init_method)
 % my_cp_als - CP decomposition with ALS
 %             some dimension can be constrained to be nonnegtive
 %
@@ -11,6 +11,7 @@ function U = cpnonneg_als(X,R,constrain_dim,update_order,quiet)
 %    constrain_dim - the dimension index constrained to be nonnegative 
 %    update_order - the order to update
 %    quiet - true: no display; false: display 
+%    init_method - 1: random vector; 2: leading eigenvalues of Xn*Xn' 
 %
 % Outputs:
 %   U - a structure contains decomposed array
@@ -42,22 +43,24 @@ function U = cpnonneg_als(X,R,constrain_dim,update_order,quiet)
 
 %------------- BEGIN CODE --------------
 if nargin < 1
-    tt1 = randn(2,3);
-    tt2 = randn(3,3);
-    tt3 = rand(4,3);
-    test_tensor = zeros(2,3,4);
+    tt1 = randn(6,3);
+    tt2 = randn(7,3);
+    tt3 = rand(8,3);
+    test_tensor = zeros(6,7,8);
     for i = 1:3
         temp1 = tt1(:,i)*tt2(:,i)';
-        for j = 1:4
+        for j = 1:size(test_tensor,3)
             test_tensor(:,:,j) = test_tensor(:,:,j) + temp1*tt3(j,i);
         end
     end
     
     X = test_tensor;
     R = 3;
-    constrain_dim = 0;
-    update_order = [3 1 2];
-    quiet = true;
+    constrain_dim = 3;
+    update_order = [1 2 3];
+    quiet = false;
+    init_method = 1;
+    
 end
 
 dims = size(X);
@@ -68,10 +71,20 @@ if (constrain_dim > n_dim) || (constrain_dim < 1)
     constrain_dim = 0;
 end
 for i = 1:n_dim
-    if i ~= constrain_dim
-        U{i} = randn(dims(i), R);
-    else
-        U{i} = rand(dims(i), R);
+    
+    if init_method == 1
+        if i ~= constrain_dim
+            
+            U{i} = randn(dims(i), R);
+        else
+            U{i} = rand(dims(i), R);
+        end
+    end
+    
+    if init_method == 2
+    
+        matrix_init = my_matricization(X,i);
+        [U{i},~] = eigs(matrix_init*matrix_init',R);
     end
 end
 
@@ -90,6 +103,13 @@ while deltaU > tol
         if i ~= constrain_dim
             Unew = P\temp_matrix';
             U{i} = Unew';
+            
+            I = sum(abs(U{i}),1) == 0;
+            if sum(I) ~= 0
+                disp('warning: there is zero loading')
+                U{i}(:,I) = 10^-5;
+            end
+            
         else
             %%%%%%%%%%% nonnegtive constrianed least square
             temp_matrix = temp_matrix';
@@ -97,8 +117,15 @@ while deltaU > tol
             temp_U_i = zeros(size(U{i}))';
             for j = 1:num_i
                 temp_U_i(:,j) = lsqnonneg(P,temp_matrix(:,j));
+                
             end
             U{i} = temp_U_i';
+            I = sum(abs(U{i}),1) == 0;
+            if sum(I) ~= 0
+                disp('warning: there is zero loading')
+                U{i}(:,I) = 10^-5;
+            end
+            
             
         end
         
@@ -115,8 +142,14 @@ end
 if quiet
     disp(['iteration number ',num2str(iter),' deltaU = ',num2str(deltaU)]);
 end
-
-
+lambda = ones(R,1);
+for i = 1:R
+    for j = 1: n_dim
+       temp = std(U{j}(:,i));
+       lambda(i) = lambda(i)*temp;
+       U{j}(:,i) = U{j}(:,i)/temp;
+    end
+end
 
 
 
@@ -130,17 +163,7 @@ n_dim = length(dims);
 if (md <0) || (md > n_dim)
     error('the dimension to matricization does not exsit');
 end
-% % if md == 1
-% %     flatten_matrix = reshape(X, dims(md),prod(dims(md+1:end)));
-% % else if md == n_dim
-% %         flatten_matrix = permute(X,[md,1:n_dim-1]);
-% %         flatten_matrix = reshape(flatten_matrix, dims(md),prod(dims(1:n_dim-1)));
-% %     else
-% % 
-% %         flatten_matrix = permute(X,[md,1:md-1,md+1:n_dim]);
-% %         flatten_matrix = reshape(flatten_matrix, dims(md), prod(dims([1:md-1,md+1:n_dim])));
-% %     end
-% % end
+
 [dimseq_without_i,dimseq_first_i] = dimseq(n_dim,md);
 flatten_matrix = permute(X,dimseq_first_i);
 flatten_matrix = reshape(flatten_matrix, dims(md),prod(dims(dimseq_without_i)));
