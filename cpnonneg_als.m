@@ -1,4 +1,4 @@
-function [U lambda]= cpnonneg_als(X,R,constrain_dim,update_order,quiet,init_method)
+function [U lambda]= cpnonneg_als(X,R,constrain_dim,update_order,quiet,init_method,tol)
 % my_cp_als - CP decomposition with ALS
 %             some dimension can be constrained to be nonnegtive
 %
@@ -60,6 +60,7 @@ if nargin < 1
     update_order = [1 2 3];
     quiet = false;
     init_method = 1;
+    tol = 10^-4;
     
 end
 
@@ -88,7 +89,7 @@ for i = 1:n_dim
     end
 end
 
-tol = 10^-4;
+
 deltaU = 1;
 iter = 0;
 while deltaU > tol
